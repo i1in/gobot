@@ -1,53 +1,63 @@
 package internal
 
 import (
-	"fmt"
 	"github.com/bwmarrin/discordgo"
-	"github.com/joho/godotenv"
+	"log"
 	"os"
 	"os/signal"
 	"regexp"
-	"strconv"
 	"strings"
 	"syscall"
-	"time"
 )
+
+type Application struct {
+	session *discordgo.Session
+}
 
 var (
-	BotToken string
-	Prefix   = "."
+	BotToken       string
+	Prefix         string
+	Reg            = regexp.MustCompile(`^(.*?[.,-]{1})(.*)`)
+	RegexGetUserId = regexp.MustCompile(`<@&?(\d+)>`)
 )
 
-var r = regexp.MustCompile(`^(.*?[.,-]{1})(.*)`)
-
-func main() {
-	godotenv.Load()
-
-	token := os.Getenv("BOT_TOKEN")
-	dg, err := discordgo.New("Bot " + token)
+func New() *Application {
+	session, err := discordgo.New("Bot " + BotToken)
 	if err != nil {
-		fmt.Println(err)
-		return
+		log.Fatal(err)
 	}
 
-	dg.AddHandler(message)
-	dg.Identify.Intents = discordgo.IntentsAll
+	session.Identify.Intents = discordgo.IntentsAll
 
-	err = dg.Open()
-	if err != nil {
-		fmt.Println(err)
+	return &Application{
+		session: session,
+	}
+}
+
+func (a *Application) Start() {
+
+	app := New()
+
+	if err := app.session.Open(); err != nil {
+		log.Fatal(err)
 	}
 
-	fmt.Println("bot running")
+	log.Println("Bot running")
+
+	app.session.AddHandler(message)
+	app.waitStop()
+}
+
+func (a *Application) waitStop() {
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	<-sc
 
-	dg.Close()
+	a.session.Close()
 }
 
 func findPrefix(s string) string {
-	split := r.FindStringSubmatch(s)
+	split := Reg.FindStringSubmatch(s)
 	if len(split) < 2 {
 		return ""
 	}
@@ -55,192 +65,98 @@ func findPrefix(s string) string {
 }
 
 func Command(s string) string {
-	split := r.FindStringSubmatch(s)
+	split := Reg.FindStringSubmatch(s)
 	if len(split) < 2 {
 		return ""
 	}
 	return split[2]
 }
 
-func convertTime(input string) (int, error) {
-	unit := input[len(input)-1:]
-
-	value, err := strconv.Atoi(strings.TrimSuffix(input, unit))
-	if err != nil {
-		return 0, fmt.Errorf("ошибка преобразования числа: %v", err)
+func removeByIndex(array []string) []string {
+	result := make([]string, 0)
+	for _, str := range array {
+		if str != "" && strings.TrimSpace(str) != "" {
+			result = append(result, str)
+		}
 	}
-
-	switch unit {
-	case "m":
-		return value, nil
-	case "h":
-		return value * 60, nil
-	case "d":
-		return value * 24 * 60, nil
-	default:
-		return 0, fmt.Errorf("неизвестная единица измерения времени: %s", unit)
-	}
+	return result
 }
 
-func message(s *discordgo.Session, m *discordgo.MessageCreate) {
-	if m.Author.ID == s.State.User.ID {
+func message(session *discordgo.Session, message *discordgo.MessageCreate) {
+
+	if message.Author.ID == session.State.User.ID {
 		return
 	}
 
-	args := strings.Split(m.Content, " ")
+	args := removeByIndex(strings.Split(message.Content, " "))
+
+	log.Printf("[%s]", strings.Join(args, ", "))
+
 	if findPrefix(args[0]) != Prefix {
 		return
 	}
 
-	if Command(args[0]) == "ban" {
-		reg := regexp.MustCompile("[^0-9]")
-		name := reg.ReplaceAllString(args[1], "")
-		reason := append(args[:0], args[3:]...)
-		banTime, err := convertTime(args[2])
+	switch Command(args[0]) {
 
-		if err != nil {
-			fmt.Println("Ошибка парсинга времени:", err)
+	case "ban":
+		command := &BanCommand{}
+		userId := ""
+
+		command.time = "3d"
+		command.reason = "Без причины"
+		offset := 0
+
+		if message.Message.ReferencedMessage != nil {
+			userId = message.Message.ReferencedMessage.Author.ID
+		}
+
+		if userId != "" && len(args) == 1 {
+			log.Println(".ban sdfjbsdfhbdsjf sdkjf nsdkf s")
 			return
 		}
 
-		description := fmt.Sprintf(":white_check_mark: Участник **<@%s>** был забанен.", name)
-
-		embed := discordgo.MessageEmbed{
-			Description: description,
-			Color:       0x004444,
-			Fields: []*discordgo.MessageEmbedField{
-				{
-					Name:   "Модератор: ",
-					Value:  "<@" + m.Author.ID + ">",
-					Inline: true,
-				},
-				{
-					Name:   "Время бана: ",
-					Value:  strconv.Itoa(int(banTime)) + "дн.",
-					Inline: true,
-				},
-				{
-					Name:   "Причина: ",
-					Value:  strings.Join(reason, " "),
-					Inline: false,
-				},
-			},
-		}
-
-		s.ChannelMessageSendEmbed(m.ChannelID, &embed)
-
-		s.GuildBanCreateWithReason(
-			m.GuildID,
-			name,
-			strings.Join(reason, " "),
-			0,
-		)
-
-		time.AfterFunc(time.Second*time.Duration(banTime*60), func() {
-			err := s.GuildBanDelete(m.GuildID, name)
-			if err != nil {
-				fmt.Println("Error deleting ban:", err)
-				return
+		hasUser := false
+		if strings.HasPrefix(args[1], "<@") {
+			args[1] = strings.Replace(args[1], "&", "", 1)
+			r := RegexGetUserId.FindStringSubmatch(args[1])
+			log.Println(r)
+			if len(r) > 0 {
+				userId = r[1]
 			}
-		})
+			hasUser = true
+		}
 
-		if err != nil {
-			fmt.Println("Ошибка создания бана:", err)
+		if userId == "" {
+			// юзер не найден
+			log.Println("юзер не найден")
 			return
 		}
-	}
 
-	if Command(args[0]) == "unban" {
-		reg := regexp.MustCompile("[^0-9]")
-		name := reg.ReplaceAllString(args[1], "")
-		reason := append(args[:0], args[2:]...)
+		command.member = userId
 
-		err := s.GuildBanDelete(m.GuildID, name)
-		if err != nil {
-			result := fmt.Sprintf("Error deleting ban: %s", err)
-			s.ChannelMessageSend(m.ChannelID, result)
-			return
-		} else {
-			description := fmt.Sprintf(":white_check_mark: Участник **<@%s>** был разбанен.", name)
-
-			embed := discordgo.MessageEmbed{
-				Description: description,
-				Color:       0x004444,
-				Fields: []*discordgo.MessageEmbedField{
-					{
-						Name:   "Модератор: ",
-						Value:  "<@" + m.Author.ID + ">",
-						Inline: true,
-					},
-					{
-						Name:   "Причина: ",
-						Value:  strings.Join(reason, " "),
-						Inline: true,
-					},
-				},
-			}
-
-			s.ChannelMessageSendEmbed(m.ChannelID, &embed)
+		if hasUser {
+			offset = 1
 		}
-	}
 
-	if Command(args[0]) == "kick" {
-		reg := regexp.MustCompile("[^0-9]")
-		name := reg.ReplaceAllString(args[1], "")
-		reason := append(args[:0], args[2:]...)
-
-		err := s.GuildMemberDelete(m.GuildID, name)
-		if err != nil {
-			result := fmt.Sprintf("Error kicking: %s", err)
-			s.ChannelMessageSend(m.ChannelID, result)
-			return
-		} else {
-
-			description := fmt.Sprintf(":white_check_mark: Участник **<@%s>** был кикнут.", name)
-
-			embed := discordgo.MessageEmbed{
-				Description: description,
-				Color:       0x004444,
-				Fields: []*discordgo.MessageEmbedField{
-					{
-						Name:   "Модератор: ",
-						Value:  "<@" + m.Author.ID + ">",
-						Inline: true,
-					},
-					{
-						Name:   "Причина: ",
-						Value:  strings.Join(reason, " "),
-						Inline: true,
-					},
-				},
-			}
-
-			s.ChannelMessageSendEmbed(m.ChannelID, &embed)
+		if len(args) >= 1+offset {
+			command.time = args[1+offset]
 		}
-	}
 
-	if Command(args[0]) == "ping" {
-		minutes, err := convertTime(args[1])
-		if err != nil {
-			fmt.Printf("Ошибка конвертации времени для %s: %v\n", m.Content, err)
-		} else {
-			s.ChannelMessageSend(m.ChannelID, strconv.Itoa(minutes*60))
+		if len(args) >= 2+offset {
+			command.reason = strings.Join(args[2+offset:], " ")
 		}
-	}
 
-	if Command(args[0]) == "say" {
-		s.ChannelMessageDelete(m.ChannelID, m.Message.ID)
+		log.Println(userId, command.time, command.reason)
 
-		said := append(args[:0], args[1:]...)
-		result := fmt.Sprintf("%s", strings.Join(said, " "))
-		s.ChannelMessageSend(m.ChannelID, result)
-	}
+		command.Run(session, message)
+		return
 
-	if Command(args[0]) == "mute" {
-		member := args[1]
-		time := args[2]
-		reason := append(args[:0], args[3:]...)
-		result := fmt.Sprintf("Участник %s был замучен на %s.\nПричина: %s", member, time, strings.Join(reason, " "))
-		s.ChannelMessageSend(m.ChannelID, result)
+	case "add":
+		command := &VoiceChannel{}
+
+		command.name = args[1]
+
+		command.Run(session, message)
+		return
 	}
 }

@@ -1,0 +1,15 @@
+v: "1.0"
+roles:
+ - id: 729369333180006513
+   type: admin
+   perm:
+    - ban
+    - kick
+    - mute
+ - id: 941410369228906577
+   type: moder
+   perm:
+    - ban
+    - kick
+    - mute
+
