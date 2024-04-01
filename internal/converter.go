@@ -9,7 +9,8 @@ import (
 )
 
 type TimeConverter struct {
-	time string
+	time  string
+	isInt bool
 }
 
 func (t *TimeConverter) plural(num int, titles ...string) string {
@@ -36,7 +37,6 @@ func (t *TimeConverter) timeToDate() string {
 	days := time / (3600 * 24)
 	hours := time / 3600
 	minutes := time / 60 % 60
-	seconds := time % 10
 
 	if days > 0 {
 		return t.format(days, "день", "дня", "дней")
@@ -49,7 +49,7 @@ func (t *TimeConverter) timeToDate() string {
 	if minutes > 0 {
 		return t.format(minutes, "минута", "минуты", "минут")
 	} else {
-		return t.format(seconds, "секунда", "секунды", "секунд")
+		return t.format(time, "секунда", "секунды", "секунд")
 	}
 }
 
