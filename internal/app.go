@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"fmt"
 	"github.com/bwmarrin/discordgo"
 	"log"
 	"os"
@@ -19,7 +20,6 @@ var (
 	Prefix         string
 	Reg            = regexp.MustCompile(`^(.*?[.,-]{1})(.*)`)
 	RegexGetUserId = regexp.MustCompile(`<@&?(\d+)>`)
-	Args           []string
 )
 
 func New() *Application {
@@ -83,70 +83,42 @@ func removeByIndex(array []string) []string {
 	return result
 }
 
-func parseTime(hasUser bool, offset int) string {
-	switch hasUser {
-	case true:
-		if len(Args) >= 2+offset {
-			return Args[1+offset]
-		}
-	case false:
-		return Args[1]
-	}
-	return "Навсегда"
-}
-
-func parseReason(hasUser bool, offset int) string {
-	switch hasUser {
-	case true:
-		if len(Args) >= 3+offset {
-			return strings.Join(Args[2+offset:], " ")
-		}
-	case false:
-		if len(Args) == 2 && Args[1] != "" { // заменить Args[1] == "" на isInt boolean в случае если удалось сконвертировать значение, иначе
-			return ""
-		}
-
-		if len(Args) >= 3 { // <- иначе
-			return strings.Join(Args[2:], " ")
-		}
-	}
-	return "Без причины"
-}
-
 func message(session *discordgo.Session, message *discordgo.MessageCreate) {
 
 	if message.Author.ID == session.State.User.ID {
 		return
 	}
 
-	Args = removeByIndex(strings.Split(message.Content, " "))
+	args := removeByIndex(strings.Split(message.Content, " "))
 
-	log.Printf("[%s]", strings.Join(Args, ", "))
+	log.Printf("[%s]", strings.Join(args, ", "))
 
-	if findPrefix(Args[0]) != Prefix {
+	if findPrefix(args[0]) != Prefix {
 		return
 	}
 
-	switch Command(Args[0]) {
+	switch Command(args[0]) {
 	case "ban":
 		command := &BanCommand{}
 		userId := ""
 
+		command.time = "Навсегда"
+		command.reason = "Без причины"
 		offset := 0
 
 		if message.Message.ReferencedMessage != nil {
 			userId = message.Message.ReferencedMessage.Author.ID
 		}
 
-		if userId != "" && len(Args) == 1 {
+		if userId != "" && len(args) == 1 {
 			log.Println(".ban sdfjbsdfhbdsjf sdkjf nsdkf s")
 			return
 		}
 
 		hasUser := false
-		if strings.HasPrefix(Args[1], "<@") {
-			Args[1] = strings.Replace(Args[1], "&", "", 1)
-			r := RegexGetUserId.FindStringSubmatch(Args[1])
+		if strings.HasPrefix(args[1], "<@") {
+			args[1] = strings.Replace(args[1], "&", "", 1)
+			r := RegexGetUserId.FindStringSubmatch(args[1])
 			log.Println(r)
 			if len(r) > 0 {
 				userId = r[1]
@@ -166,8 +138,11 @@ func message(session *discordgo.Session, message *discordgo.MessageCreate) {
 			offset = 1
 		}
 
-		command.time = parseTime(hasUser, offset)
-		command.reason = parseReason(hasUser, offset)
+		fmt.Println("%s", hasUser)
+
+		parser := getArgs(args, hasUser, offset)
+		command.time = parser.parseTime()
+		command.reason = parser.parseReason()
 
 		log.Println(userId, command.time, command.reason)
 
@@ -177,7 +152,7 @@ func message(session *discordgo.Session, message *discordgo.MessageCreate) {
 	case "add":
 		command := &VoiceChannel{}
 
-		command.name = Args[1]
+		command.name = args[1]
 
 		command.Run(session, message)
 		return
