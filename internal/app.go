@@ -101,9 +101,7 @@ func message(session *discordgo.Session, message *discordgo.MessageCreate) {
 	case "ban":
 		command := &BanCommand{}
 		userId := ""
-
-		command.time = "Навсегда"
-		command.reason = "Без причины"
+		isInt := false
 		offset := 0
 
 		if message.Message.ReferencedMessage != nil {
@@ -116,7 +114,7 @@ func message(session *discordgo.Session, message *discordgo.MessageCreate) {
 		}
 
 		hasUser := false
-		if strings.HasPrefix(args[1], "<@") {
+		if len(args) > 1 && strings.HasPrefix(args[1], "<@") {
 			args[1] = strings.Replace(args[1], "&", "", 1)
 			r := RegexGetUserId.FindStringSubmatch(args[1])
 			log.Println(r)
@@ -141,8 +139,8 @@ func message(session *discordgo.Session, message *discordgo.MessageCreate) {
 		fmt.Println("%s", hasUser)
 
 		parser := getArgs(args, hasUser, offset)
-		command.time = parser.parseTime()
-		command.reason = parser.parseReason()
+		command.time, isInt = parser.parseTime()
+		command.reason = parser.parseReason(isInt)
 
 		log.Println(userId, command.time, command.reason)
 

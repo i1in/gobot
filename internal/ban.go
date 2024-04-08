@@ -30,7 +30,7 @@ func (b *BanCommand) Run(session *discordgo.Session, message *discordgo.MessageC
 	outputTime := convert(b.time).convertTime()
 
 	if _, err := strconv.Atoi(outputTime.time); err != nil {
-		result := fmt.Sprintf("%s %s %s")
+		result := fmt.Sprintf("участник \n%s \nпричина\n%s", b.member, b.reason)
 		session.ChannelMessageSend(message.ChannelID, result)
 		return
 	}

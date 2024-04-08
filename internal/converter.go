@@ -60,30 +60,36 @@ func (t *TimeConverter) convertTime() *TimeConverter {
 	value, err := strconv.Atoi(strings.TrimSuffix(t.time, unit))
 	if err != nil {
 		return &TimeConverter{
-			time: t.time,
+			time:  t.time,
+			isInt: false,
 		}
 	}
 
 	switch unit {
 	case "s":
 		return &TimeConverter{
-			time: strconv.Itoa(value),
+			time:  strconv.Itoa(value),
+			isInt: true,
 		}
 	case "m":
 		return &TimeConverter{
-			time: strconv.Itoa(value * 60),
+			time:  strconv.Itoa(value * 60),
+			isInt: true,
 		}
 	case "h":
 		return &TimeConverter{
-			time: strconv.Itoa(value * 60 * 60),
+			time:  strconv.Itoa(value * 60 * 60),
+			isInt: true,
 		}
 	case "d":
 		return &TimeConverter{
-			time: strconv.Itoa(value * 24 * 60 * 60),
+			time:  strconv.Itoa(value * 24 * 60 * 60),
+			isInt: true,
 		}
 	default:
 		return &TimeConverter{
-			time: t.time,
+			time:  t.time,
+			isInt: false,
 		}
 	}
 }
